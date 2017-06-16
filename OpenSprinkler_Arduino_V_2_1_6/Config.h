@@ -38,7 +38,7 @@ About:		This is a fork of Rays OpenSprinkler code thats amended to use alternati
 #define OPENSPRINKLER_ARDUINO_W5100			// use Wiznet5100 Ethernet shield (without this the code defaults to the Ethercard enc28j60 library)
 #endif
 //#define OPENSPRINKLER_ARDUINO_AUTOREBOOT		// this is an additional function to reboot daily to ensure stable operation
-//#define OPENSPRINKLER_ARDUINO_FREEMEM			// this is an additional function to display free memory on the LCD for debugging
+#define OPENSPRINKLER_ARDUINO_FREEMEM			// this is an additional function to display free memory on the LCD for debugging
 //#define OPENSPRINKLER_ARDUINO_HEARTBEAT			// this is an additional function to say 'alls well' - flashes an LED, and the ':' on the LCD time at 1Hz
 //#define OPENSPRINKLER_ARDUINO_WDT				// this flag turns the WDT on or off (refer to your reference documentation 
 												// for whether the firmware loaded on your Arduino mega supports a WDT)

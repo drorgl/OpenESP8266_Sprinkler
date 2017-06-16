@@ -241,6 +241,8 @@ public:
 //
 	static  bool WiFiconnect();          // Connect ESP8266 to network and start server
 	static bool WiFiconnect(const uint8_t* my_ip, const uint8_t* gw_ip, const uint8_t* dns_ip, const uint8_t* mask);
+
+	static void resetSettings();
 //
     // EtherCard.cpp
     /**   @brief  Initialise the network interface

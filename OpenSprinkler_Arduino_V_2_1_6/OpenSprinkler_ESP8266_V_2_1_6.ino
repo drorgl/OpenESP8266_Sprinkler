@@ -83,11 +83,11 @@ Original Opensprinkler code commences below here
 
 	#include <Time.h>
 	#include <DS1307RTC.h>
-#ifdef LCDI2C
-    #include <LiquidCrystal_I2C.h>
-#else
-	#include <LiquidCrystal.h>
-#endif
+//#ifdef LCDI2C
+//    #include <LiquidCrystal_I2C.h>
+//#else
+//	#include <LiquidCrystal.h>
+//#endif
 
 	#ifdef OPENSPRINKLER_ARDUINO_W5100
 #ifndef ESP8266

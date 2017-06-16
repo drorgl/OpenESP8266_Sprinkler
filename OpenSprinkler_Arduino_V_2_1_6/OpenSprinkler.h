@@ -287,6 +287,7 @@ static	LiquidCristal lcd;
   static void nvdata_save();
 
   static void options_setup();
+  static void options_clear();
   static void options_load();
   static void options_save();
 

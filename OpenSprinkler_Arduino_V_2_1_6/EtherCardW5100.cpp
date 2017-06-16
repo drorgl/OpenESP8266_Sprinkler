@@ -405,11 +405,11 @@ bool EtherCardW5100::staticSetup
 {
 	using_dhcp = false;
 
-	
+	bool result = false;
 #ifdef ESP8266
 #ifndef WIFIMANAGER
 	uint8_t n = 0;
-	bool result = false;
+	
 	uint8_t nNetwork= scanNetwork(0);
 	while (n < nNetwork&&!result) {
 		SSID =  CharFromString(found_SSID[n]);
@@ -422,6 +422,7 @@ bool EtherCardW5100::staticSetup
 	}
 #else
 	WiFiManager wifiManager;
+	wifiManager.setDebugOutput(true);
 	IPAddress ip = IPAddress(my_ip[0],my_ip[1],my_ip[2],my_ip[3]);
 	IPAddress gw = IPAddress(gw_ip[0], gw_ip[1], gw_ip[2], gw_ip[3]); 
 	IPAddress subnet = IPAddress(255,255,255,0);
@@ -430,7 +431,7 @@ bool EtherCardW5100::staticSetup
 	//wifiManager.setAPCallback(configModeCallback);
 
 
-	wifiManager.autoConnect("AutoConnectAP");
+	wifiManager.autoConnect("OpenSprinklerSetup");
 #endif //WIFIMANAGER
 #else
 	
@@ -514,6 +515,14 @@ bool EtherCardW5100::WiFiconnect( const uint8_t* my_ip, const uint8_t* gw_ip, co
 		return true;
 	}
 }
+
+void EtherCardW5100::resetSettings() {
+#ifdef WIFIMANAGER
+	WiFiManager wifiManager;
+	wifiManager.resetSettings();
+#endif
+}
+
 #endif
 
 
@@ -550,7 +559,7 @@ bool EtherCardW5100::dhcpSetup ( const char *hname, bool fromRam )
 	if (!result )return false;
 #else
 	WiFiManager wifiManager;
-	wifiManager.autoConnect("AutoConnectAP");
+	wifiManager.autoConnect("OpenSprinklerSetup");
 #endif
 
 #ifdef HOSTNAM

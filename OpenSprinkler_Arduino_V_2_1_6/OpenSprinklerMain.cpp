@@ -272,6 +272,7 @@ void do_setup()
 #else
 #ifndef ESP8266
 	wdt_disable();
+
 #endif
 #endif // OPENSPRINKLER_ARDUINO_WDT
 
@@ -289,6 +290,20 @@ void do_setup()
     DEBUG_BEGIN ( 115200 );
 #else
 	DEBUG_BEGIN ( 9600 );
+#endif
+
+#ifdef ESP8266
+	ESP.eraseConfig();
+	DEBUG_PRINTLN("Boot Mode: " + String(ESP.getBootMode()));
+	DEBUG_PRINTLN("SDK Version: " + String(ESP.getSdkVersion()));
+	DEBUG_PRINTLN("Boot Version: " + String(ESP.getBootVersion()));
+	DEBUG_PRINTLN("Chip ID: " + String(ESP.getChipId(), HEX));
+	DEBUG_PRINTLN("Flash Size: " + String(ESP.getFlashChipSize()));
+	DEBUG_PRINTLN("Flash Real Size: " + String(ESP.getFlashChipRealSize()));
+	DEBUG_PRINTLN("Flash Size by Chip: " + String(ESP.getFlashChipSizeByChipId()));
+	DEBUG_PRINTLN("Flash Chip ID: " + String(ESP.getFlashChipId(), HEX));
+	DEBUG_PRINTLN("CPU Frequency: " + String(ESP.getCpuFreqMHz()));
+	DEBUG_PRINTLN("VCC: " + String(ESP.getVcc()));
 #endif
 
     DEBUG_PRINTLN ( "Started..." );

@@ -343,10 +343,10 @@ byte OpenSprinkler::options[] =
     15, // lcd dimming
     80, // boost time (only valid to DC and LATCH type)
     0,  // weather algorithm (0 means not using weather algorithm)
-    132, // this and the next three bytes define the ntp server ip
-    163,
-    4,
-    101,
+    0, // this and the next three bytes define the ntp server ip
+    0,
+    0,
+    0,
     1,  // enable logging: 0: disable; 1: enable.
     0,  // index of master 2. 0: no master2 station
     0,
@@ -812,7 +812,7 @@ void OpenSprinkler::begin()
     nvdata.sunset_time = 1080;  // 6:00pm default sunset
 
     nboards = 1;
-    nstations = 8;
+    nstations = NUM_STATIONS_PER_BOARD;
 
 #ifdef PIN_RF_DATA
     // set rf data pin
@@ -998,14 +998,21 @@ void OpenSprinkler::apply_all_station_bits()
         // Check that we're switching physical discretes within the range defined
 		if (MAX_EXT_BOARDS - bid < PIN_EXT_BOARDS)
 		{
-			DEBUG_PRINT("s "); DEBUG_PRINT(bid);DEBUG_PRINT(" b = "); DEBUG_PRINTLN(int(sbits));
-			for (s = 0; s < 8; s++)
+			DEBUG_PRINT("s "); DEBUG_PRINT(bid);DEBUG_PRINT(" b = "); DEBUG_PRINT(int(sbits));
+			DEBUG_PRINT(" freemem = "); DEBUG_PRINTLN(freeMemory());
+			for (s = 0; s < NUM_STATIONS_PER_BOARD; s++)
 			{
 
 				//	DEBUG_PRINT(station_pins[(bid * 8) + s]);
-				byte sBit = (sbits & ((byte)1 << (7 - s))) ? STA_HIGH : STA_LOW;
+				byte sBit = (sbits & ((byte)1 << ( s))) ? STA_HIGH : STA_LOW;
 						//DEBUG_PRINTF(sBit,DEC);
-				digitalWrite(station_pins[((MAX_EXT_BOARDS - bid) * 8) + s], sBit);
+				digitalWrite(station_pins[((MAX_EXT_BOARDS - bid) * NUM_STATIONS_PER_BOARD) + s], sBit);
+				DEBUG_PRINT("station IO: ");
+				DEBUG_PRINT(station_pins[((MAX_EXT_BOARDS - bid) * NUM_STATIONS_PER_BOARD) + s]);
+					DEBUG_PRINT(" set to ");
+					DEBUG_PRINTLN(sBit);
+
+
 			}
 		}
 		
@@ -1507,6 +1514,85 @@ void OpenSprinkler::switch_remotestation ( byte *code, bool turnon )
 #endif
 }
 
+void OpenSprinkler::options_clear() {
+#if defined(ARDUINO)
+	lcd_print_line_clear_pgm(PSTR("Resetting..."), 0);
+	lcd_print_line_clear_pgm(PSTR("Please Wait..."), 1);
+	DEBUG_PRINTLN("Reset EEPROM");
+	write_message("Resetting to factory default!");
+#else
+	DEBUG_PRINT("Resetting Options...");
+#endif
+	// ======== Reset NVM data ========
+	int i, sn;
+	// 0. wipe out nvm
+	for (i = 0; i<TMP_BUFFER_SIZE; i++) tmp_buffer[i] = 0;
+	for (i = 0; i<NVM_SIZE; i += TMP_BUFFER_SIZE)
+	{
+		DEBUG_PRINT(i);
+		DEBUG_PRINT(' ');
+		delay(100);
+		int nbytes = ((NVM_SIZE - i) >TMP_BUFFER_SIZE) ? TMP_BUFFER_SIZE : (NVM_SIZE - i);
+		nvm_write_block(tmp_buffer, (void*)i, nbytes);
+	}
+	DEBUG_PRINTLN("wiped");
+	// 1. write non-volatile controller status
+	nvdata_save();
+	DEBUG_PRINTLN("nvdata");
+	// 2. write string parameters
+	nvm_write_block(DEFAULT_PASSWORD, (void*)ADDR_NVM_PASSWORD, strlen(DEFAULT_PASSWORD) + 1);
+	nvm_write_block(DEFAULT_LOCATION, (void*)ADDR_NVM_LOCATION, strlen(DEFAULT_LOCATION) + 1);
+	nvm_write_block(DEFAULT_JAVASCRIPT_URL, (void*)ADDR_NVM_JAVASCRIPTURL, strlen(DEFAULT_JAVASCRIPT_URL) + 1);
+	DEBUG_PRINT(char(eeprom_read_byte((byte*)ADDR_NVM_JAVASCRIPTURL + strlen(DEFAULT_JAVASCRIPT_URL) + 1) && 0x0F));
+	DEBUG_PRINTLN(char(eeprom_read_byte((byte*)ADDR_NVM_JAVASCRIPTURL + strlen(DEFAULT_JAVASCRIPT_URL) + 2) && 0x0F));
+	nvm_write_block(DEFAULT_WEATHER_URL, (void*)ADDR_NVM_WEATHERURL, strlen(DEFAULT_WEATHER_URL) + 1);
+	nvm_write_block(DEFAULT_WEATHER_KEY, (void*)ADDR_NVM_WEATHER_KEY, strlen(DEFAULT_WEATHER_KEY) + 1);
+
+	// 3. reset station names and special attributes, default Sxx
+	tmp_buffer[0] = 'S';
+	tmp_buffer[3] = 0;
+	for (i = ADDR_NVM_STN_NAMES, sn = 1; i<ADDR_NVM_MAS_OP; i += STATION_NAME_SIZE, sn++)
+	{
+		tmp_buffer[1] = '0' + (sn / 10);
+		tmp_buffer[2] = '0' + (sn % 10);
+		nvm_write_block(tmp_buffer, (void*)i, strlen(tmp_buffer) + 1);
+	}
+
+	tmp_buffer[0] = STN_TYPE_STANDARD;
+	tmp_buffer[1] = '0';
+	tmp_buffer[2] = 0;
+	int stepsize = sizeof(StationSpecialData);
+	DEBUG_PRINTLN("Preparing files");
+	delay(1000);
+	for (i = 0; i<MAX_NUM_STATIONS; i++)
+	{
+		write_to_file(stns_filename, tmp_buffer, stepsize, i*stepsize, false);
+	}
+	DEBUG_PRINTLN("file written");
+	// 4. reset station attribute bits
+	// since we wiped out nvm, only non-zero attributes need to be initialized
+	for (i = 0; i<MAX_EXT_BOARDS + 1; i++)
+	{
+		tmp_buffer[i] = 0xff;
+	}
+	nvm_write_block(tmp_buffer, (void*)ADDR_NVM_MAS_OP, MAX_EXT_BOARDS + 1);
+	nvm_write_block(tmp_buffer, (void*)ADDR_NVM_STNSEQ, MAX_EXT_BOARDS + 1);
+
+	// 5. delete sd file
+	remove_file(wtopts_filename);
+
+	// 6. write options
+	options_save(); // write default option values
+	DEBUG_PRINTLN("done");
+	//======== END OF NVM RESET CODE ========
+
+	// restart after resetting NVM.
+	delay(500);
+#if defined(ARDUINO)
+	reboot_dev();
+#endif
+}
+
 /** Setup function for options */
 void OpenSprinkler::options_setup()
 {
@@ -1524,103 +1610,43 @@ void OpenSprinkler::options_setup()
     // if so, trigger a factory reset
     if ( curr_ver != OS_FW_VERSION || nvm_read_byte ( ( byte* ) ( ADDR_NVM_OPTIONS+OPTION_RESET ) ) ==0xAA )
     {
-#if defined(ARDUINO)
-        lcd_print_line_clear_pgm ( PSTR ( "Resetting..." ), 0 );
-        lcd_print_line_clear_pgm ( PSTR ( "Please Wait..." ), 1 );
-		DEBUG_PRINTLN("Reset EEPROM");
-		write_message("Resetting to factory default!");
-#else
-        DEBUG_PRINT ( "Resetting Options..." );
-#endif
-        // ======== Reset NVM data ========
-        int i, sn;
-        // 0. wipe out nvm
-        for ( i=0; i<TMP_BUFFER_SIZE; i++ ) tmp_buffer[i]=0;
-        for ( i=0; i<NVM_SIZE; i+=TMP_BUFFER_SIZE )
-        {
-			DEBUG_PRINT(i); 
-			DEBUG_PRINT(' ');
-			delay(100);
-            int nbytes = ( ( NVM_SIZE-i ) >TMP_BUFFER_SIZE ) ?TMP_BUFFER_SIZE: ( NVM_SIZE-i );
-            nvm_write_block ( tmp_buffer, ( void* ) i, nbytes );
-        }
-		DEBUG_PRINTLN("wiped");
-        // 1. write non-volatile controller status
-        nvdata_save();
-		DEBUG_PRINTLN("nvdata");
-        // 2. write string parameters
-        nvm_write_block ( DEFAULT_PASSWORD, ( void* ) ADDR_NVM_PASSWORD, strlen ( DEFAULT_PASSWORD )+1 );
-        nvm_write_block ( DEFAULT_LOCATION, ( void* ) ADDR_NVM_LOCATION, strlen ( DEFAULT_LOCATION )+1 );
-        nvm_write_block ( DEFAULT_JAVASCRIPT_URL, ( void* ) ADDR_NVM_JAVASCRIPTURL, strlen ( DEFAULT_JAVASCRIPT_URL )+1 );
-		DEBUG_PRINT(char(eeprom_read_byte((byte*)ADDR_NVM_JAVASCRIPTURL + strlen(DEFAULT_JAVASCRIPT_URL) + 1)&&0x0F));
-		DEBUG_PRINTLN(char(eeprom_read_byte((byte*)ADDR_NVM_JAVASCRIPTURL + strlen(DEFAULT_JAVASCRIPT_URL) + 2)&&0x0F));
-		nvm_write_block ( DEFAULT_WEATHER_URL, ( void* ) ADDR_NVM_WEATHERURL, strlen ( DEFAULT_WEATHER_URL )+1 );
-        nvm_write_block ( DEFAULT_WEATHER_KEY, ( void* ) ADDR_NVM_WEATHER_KEY, strlen ( DEFAULT_WEATHER_KEY )+1 );
-
-        // 3. reset station names and special attributes, default Sxx
-        tmp_buffer[0]='S';
-        tmp_buffer[3]=0;
-        for ( i=ADDR_NVM_STN_NAMES, sn=1; i<ADDR_NVM_MAS_OP; i+=STATION_NAME_SIZE, sn++ )
-        {
-            tmp_buffer[1]='0'+ ( sn/10 );
-            tmp_buffer[2]='0'+ ( sn%10 );
-            nvm_write_block ( tmp_buffer, ( void* ) i, strlen ( tmp_buffer )+1 );
-        }
-
-        tmp_buffer[0]=STN_TYPE_STANDARD;
-        tmp_buffer[1]='0';
-        tmp_buffer[2]=0;
-        int stepsize=sizeof ( StationSpecialData );
-		DEBUG_PRINTLN("Preparing files");
-		delay(1000);
-        for ( i=0; i<MAX_NUM_STATIONS; i++ )
-        {
-            write_to_file ( stns_filename, tmp_buffer, stepsize, i*stepsize, false );
-        }
-		DEBUG_PRINTLN("file written");
-        // 4. reset station attribute bits
-        // since we wiped out nvm, only non-zero attributes need to be initialized
-        for ( i=0; i<MAX_EXT_BOARDS+1; i++ )
-        {
-            tmp_buffer[i]=0xff;
-        }
-        nvm_write_block ( tmp_buffer, ( void* ) ADDR_NVM_MAS_OP, MAX_EXT_BOARDS+1 );
-        nvm_write_block ( tmp_buffer, ( void* ) ADDR_NVM_STNSEQ, MAX_EXT_BOARDS+1 );
-
-        // 5. delete sd file
-        remove_file ( wtopts_filename );
-
-        // 6. write options
-        options_save(); // write default option values
-		DEBUG_PRINTLN("done");
-        //======== END OF NVM RESET CODE ========
-
-        // restart after resetting NVM.
-        delay ( 500 );
-#if defined(ARDUINO)
-        reboot_dev();
-#endif
+		options_clear();
     }
 
     {
+		DEBUG_PRINTLN("options load");
         // load ram parameters from nvm
         // load options
         options_load();
 
+		DEBUG_PRINTLN("nvdata load");
         // load non-volatile controller data
         nvdata_load();
     }
 
 #if defined(ARDUINO)  // handle AVR buttons
     byte button = button_read ( BUTTON_WAIT_NONE );
-	DEBUG_PRINT(button);
+	DEBUG_PRINT("detecting buttons ");
+	DEBUG_PRINTLN(button);
 //	button = 2;
 	byte ii = 1;
+
+#ifdef BUTTON_SIMPLE_RESET
+	if (button == BUTTON_MAX || button == 70) {
+		DEBUG_PRINTLN("reset requested");
+		ether.resetSettings();
+
+		options_clear();
+	}
+#else
+
 	switch (button & BUTTON_MASK)
 	{
 
 	case BUTTON_1:
+		DEBUG_PRINTLN("button 1 - reset all");
 		// if BUTTON_1 is pressed during startup, go to 'reset all options'
+		ether.resetSettings();
 		ui_set_options(OPTION_RESET);
 		if (options[OPTION_RESET])
 		{
@@ -1629,6 +1655,7 @@ void OpenSprinkler::options_setup()
 		break;
 
 	case BUTTON_2:  // button 2 is used to enter bootloader
+		DEBUG_PRINTLN("button 2 - bootloader");
 #ifdef MESSAGE
 		print_message(-(ii++ * 20));
 		delay(2000);
@@ -1641,6 +1668,7 @@ void OpenSprinkler::options_setup()
 		break;
 
     case BUTTON_3:
+		DEBUG_PRINTLN("button 3 - enter setup");
         // if BUTTON_3 is pressed during startup, enter Setup option mode
         lcd_print_line_clear_pgm ( PSTR ( "==Set Options==" ), 0 );
         delay ( DISPLAY_MSG_MS );
@@ -1659,7 +1687,9 @@ void OpenSprinkler::options_setup()
         }
         break;
     }
+#endif
 
+	DEBUG_PRINTLN("setting lcd parameters");
     // turn on LCD backlight and contrast
     lcd_set_brightness();
     lcd_set_contrast();
@@ -1714,7 +1744,7 @@ void OpenSprinkler::options_load()
         options[i] = tmp_buffer[i];
     }
     nboards = options[OPTION_EXT_BOARDS]+1;
-    nstations = nboards * 8;
+    nstations = nboards * NUM_STATIONS_PER_BOARD;
     status.enabled = options[OPTION_DEVICE_ENABLE];
     options[OPTION_FW_MINOR] = OS_FW_MINOR;
 }
@@ -1731,7 +1761,7 @@ void OpenSprinkler::options_save()
     nvm_write_block ( tmp_buffer, ( void* ) ADDR_NVM_OPTIONS, NUM_OPTIONS );
 	DEBUG_PRINTLN((int)eeprom_read_byte((byte *)ADDR_NVM_OPTIONS));
     nboards = options[OPTION_EXT_BOARDS]+1;
-    nstations = nboards * 8;
+    nstations = nboards * NUM_STATIONS_PER_BOARD;
     status.enabled = options[OPTION_DEVICE_ENABLE];
 }
 
@@ -2085,6 +2115,9 @@ byte OpenSprinkler::button_read ( byte waitmode )
         curr = button_read_busy ( BUTTON_ADC_PIN, waitmode, BUTTON_3, is_holding );
         break;
 
+	case BUTTON_MAX:
+		curr = BUTTON_MAX;
+		break;
     default:
         curr = BUTTON_NONE;
     }
@@ -2106,7 +2139,20 @@ byte OpenSprinkler::button_sample()
 
     //read the button ADC pin voltage
     buttonVoltage = analogRead ( BUTTON_ADC_PIN );
-	//DEBUG_PRINTLN(buttonVoltage);
+
+	static long voltage_display_interval;
+
+	if (voltage_display_interval == 0) {
+		DEBUG_PRINT("button voltage: ");
+		DEBUG_PRINTLN(buttonVoltage);
+	}
+
+	voltage_display_interval++;
+	
+	if (voltage_display_interval > 100){
+		voltage_display_interval = 0;
+	}
+
     //sense if the voltage falls within valid voltage windows
 	//avoid to pick 0 volt as Button right ...
     if ( buttonVoltage < ( RIGHT_10BIT_ADC + BUTTONHYSTERESIS )&& buttonVoltage > (RIGHT_10BIT_ADC - BUTTONHYSTERESIS))
@@ -2132,7 +2178,10 @@ byte OpenSprinkler::button_sample()
               && buttonVoltage <= ( SELECT_10BIT_ADC + BUTTONHYSTERESIS ) )
     {
         return BUTTON_SELECT;
-    }
+	}
+	else if (buttonVoltage >= (SELECT_10BIT_ADC + BUTTONHYSTERESIS)) {
+		return BUTTON_MAX;
+	}
     else
         return BUTTON_NONE;
 }
