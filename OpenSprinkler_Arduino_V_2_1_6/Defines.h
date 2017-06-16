@@ -102,8 +102,9 @@
 
 	#else
 
-		#define MAX_EXT_BOARDS		5  // maximum number of exp. boards (each expands 8 stations)
-		#define MAX_NUM_STATIONS	((1+MAX_EXT_BOARDS)*8)  // maximum number of stations
+		#define MAX_EXT_BOARDS		0  // maximum number of exp. boards (each expands 8 stations)
+		#define MAX_NUM_STATIONS	4//((1+MAX_EXT_BOARDS)*8)  // maximum number of stations
+		#define NUM_STATIONS_PER_BOARD 4 //number of stations for a board
 
 		#define NVM_SIZE            2048  // For AVR, nvm data is stored in EEPROM, ATmega644 has 2K EEPROM
 		#define STATION_NAME_SIZE   16    // maximum number of characters in each station name
